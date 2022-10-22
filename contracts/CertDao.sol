@@ -80,8 +80,12 @@ contract CertDao is Ownable {
 
     function getDomainStatus(address contractAddress) public view returns (string memory) {
         require(contractAddress != address(0), "Contract address is empty");
-        domainStatus status = contractAddressTodomainOwner[contractAddress].status;
-        return domainStatusToString(status);
+        domainOwnerInfo memory domain = contractAddressTodomainOwner[contractAddress];
+        if(domain.timestamp + EXPIRATION_PERIOD < block.timestamp) {
+            return domainStatusToString(domainStatus.expired);
+        } else {
+            return domainStatusToString(domain.status);
+        }
     }
 
     function getDomainName(address contractAddress) public view returns (string memory) {
@@ -89,21 +93,21 @@ contract CertDao is Ownable {
         return contractAddressTodomainOwner[contractAddress].domainName;
     }
 
-    function requireNotEmptyDomainAndContract(string memory domainName, address contractAddress) private pure {
+    function requireNotEmptyDomainAndContract(address contractAddress, string memory domainName) private pure {
         require(bytes(domainName).length != 0, "Domain name is empty");
         require(contractAddress != address(0), "Contract address is empty");
     }
 
-    function submitForValidation(string memory domainName, address contractAddress) public payable {
+    function submitForValidation(address contractAddress, string memory domainName) public payable {
         console.log("Domain Name: %s, Contract: %s", domainName, contractAddress);
-        requireNotEmptyDomainAndContract(domainName, contractAddress);
+        requireNotEmptyDomainAndContract(contractAddress, domainName);
 
         require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start the validation process.");
 
         require(compareStrings(contractAddressTodomainOwner[contractAddress].domainName, ""), "Domain name already registered in struct.");
 
         // Send 0.05 ether to the owner of the contract
-        (bool sent, bytes memory data) = owner().call{value: msg.value}("");
+        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
         require(sent, "Failed to send Ether!");
 
         // Add the domain name to the struct
@@ -112,10 +116,10 @@ contract CertDao is Ownable {
         emit ContractSubmittedForValidation(contractAddress, domainName);
     }
 
-    function verify(string memory domainName , address contractAddress) view public returns (bool) {
+    function verify(address contractAddress, string memory domainName) view public returns (bool) {
         console.log("Inputs: %s, %s", domainName, contractAddress);
 
-        requireNotEmptyDomainAndContract(domainName, contractAddress);
+        requireNotEmptyDomainAndContract(contractAddress, domainName);
 
         domainOwnerInfo memory domainOwner = contractAddressTodomainOwner[contractAddress];
 
@@ -136,33 +140,71 @@ contract CertDao is Ownable {
     }
 
     function updateOwner(address contractAddress, string memory newDomainOwner) public payable {
-        requireNotEmptyDomainAndContract(newDomainOwner, contractAddress);
+        requireNotEmptyDomainAndContract(contractAddress, newDomainOwner);
         require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start updateOwner process.");
+        require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress, "Only the owner of the domain can update the owner.");
+
+        // Send 0.05 ether to the owner of the contract
+        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
+        require(sent, "Failed to send Ether!");
+
+        contractAddressTodomainOwner[contractAddress].ownerAddress = msg.sender;
+
     }
 
     function transferContractToNewDomain(address newContractAddress, string memory domainOwner) public payable {
-        requireNotEmptyDomainAndContract(domainOwner, newContractAddress);
+        requireNotEmptyDomainAndContract(newContractAddress, domainOwner);
         require(msg.sender == contractAddressTodomainOwner[newContractAddress].ownerAddress, "You are not the owner of the contract to transfer domains.");
         require(contractAddressTodomainOwner[newContractAddress].status == domainStatus.approved, "Contract is not approved.");
         require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start transferContract process.");
     }
 
-    function renew(address contractAddress) public payable {
-        requireNotEmptyDomainAndContract(contractAddressTodomainOwner[contractAddress].domainName, contractAddress);
-        require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress, "Only the owner of the contract can renew the domain mapping.");
+    // function renew(address contractAddress, string memory domainOwner) public payable {
+    //     requireNotEmptyDomainAndContract(contractAddressTodomainOwner[contractAddress].domainName, contractAddress);
+    //     require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress, "Only the owner of the contract can renew the domain mapping.");
+    //     if(contractAddressTodomainOwner[contractAddress].status == domainStatus.approved) {
+    //         require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to renew the domain.");
+    //         (bool sent, bytes memory data) = owner().call{value: msg.value}("");
+    //         require(sent, "Failed to send Ether!");
+    //         contractAddressTodomainOwner[contractAddress].timestamp = block.timestamp;
+    //         emit ContractApproved(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, domainStatus.approved);
+    //     }
+    // }
+
+    function manualFlag(address contractAddress, string memory domainName, string memory description) public onlyOwner {
+        // Manual flagging of a contract.
+        require(contractAddress != address(0), "Contract address is empty");
+        contractAddressTodomainOwner[contractAddress].status = domainStatus.manualFlag;
+        if(bytes(domainName).length != 0) {
+            contractAddressTodomainOwner[contractAddress].domainName = domainName;
+        }
+        if(bytes(description).length != 0) {
+            contractAddressTodomainOwner[contractAddress].description = description;
+        }
+        emit ContractManuallyFlag(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, description);
+    }
+
+    function renew(address contractAddress, string memory domainName) public payable {
+        requireNotEmptyDomainAndContract(contractAddress, domainName);
+
+        require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress || msg.sender == owner(), "Only the owner of the contract or DAO can renew the domain mapping.");
+
         if(contractAddressTodomainOwner[contractAddress].status == domainStatus.approved) {
-            require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to renew the domain.");
-            (bool sent, bytes memory data) = owner().call{value: msg.value}("");
-            require(sent, "Failed to send Ether!");
-            contractAddressTodomainOwner[contractAddress].timestamp = block.timestamp;
-            emit ContractApproved(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, domainStatus.approved);
+            if(contractAddressTodomainOwner[contractAddress].timestamp + EXPIRATION_PERIOD < block.timestamp) {
+                require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to renew the domain.");
+                (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
+                require(sent, "Failed to send Ether!");
+                contractAddressTodomainOwner[contractAddress].timestamp = block.timestamp;
+                emit ContractRenewed(contractAddress, domainName, domainStatus.approved);
+            }
+            else {
+                console.log("Domain is not expired yet.");
+            }
         }
     }
 
-    function manualFlag() public onlyOwner {}
-
     function revoke(address contractAddress) public onlyOwner {
-         requireNotEmptyDomainAndContract(contractAddressTodomainOwner[contractAddress].domainName, contractAddress);
+         requireNotEmptyDomainAndContract(contractAddress, contractAddressTodomainOwner[contractAddress].domainName);
         if(contractAddressTodomainOwner[contractAddress].status != domainStatus.revoked) {
             contractAddressTodomainOwner[contractAddress].status = domainStatus.revoked;
             emit ContractRevoked(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, "Contract revoked by DAO");
@@ -170,7 +212,7 @@ contract CertDao is Ownable {
     }
 
     function approve(address contractAddress) public onlyOwner {
-        requireNotEmptyDomainAndContract(contractAddressTodomainOwner[contractAddress].domainName, contractAddress);
+        requireNotEmptyDomainAndContract(contractAddress, contractAddressTodomainOwner[contractAddress].domainName);
         if(contractAddressTodomainOwner[contractAddress].status != domainStatus.approved) {
             contractAddressTodomainOwner[contractAddress].status = domainStatus.approved;
             emit ContractApproved(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, domainStatus.approved);
@@ -188,8 +230,5 @@ contract CertDao is Ownable {
             revoke(contractAddresses[i]);
         }
     }
-
-    // TODO: Is this necessary?
-
 
 }

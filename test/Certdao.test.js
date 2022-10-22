@@ -28,7 +28,7 @@ describe("main certdao contract", function () {
 
     it("Should return true if certdao is registered", async function () {
       const { certdao } = await loadFixture(deployTokenFixture);
-      expect(await certdao.verify("www.certdao.net", certdao.address)).to.equal(
+      expect(await certdao.verify(certdao.address, "www.certdao.net")).to.equal(
         true
       );
     });
@@ -38,7 +38,7 @@ describe("main certdao contract", function () {
     it("Should not succeed if no funds sent", async function () {
       const { certdao } = await loadFixture(deployTokenFixture);
       await expect(
-        certdao.submitForValidation("www.certdao.net", certdao.address)
+        certdao.submitForValidation(certdao.address, "www.certdao.net")
       ).to.be.revertedWith(
         "Please send 0.05 ether to start the validation process."
       );
@@ -53,8 +53,8 @@ describe("main certdao contract", function () {
 
       await expect(
         certdao.submitForValidation(
-          "www.certdao.net",
           certdao.address,
+          "www.certdao.net",
           payableParams
         )
       ).to.be.revertedWith("Domain name already registered in struct.");
@@ -69,8 +69,8 @@ describe("main certdao contract", function () {
 
       await expect(
         certdao.submitForValidation(
-          "www.certdao.net",
           certdao.address,
+          "www.certdao.net",
           payableParams
         )
       ).to.be.revertedWith("Domain name already registered in struct.");
@@ -94,11 +94,13 @@ describe("main certdao contract", function () {
         await certdao
           .connect(addr2)
           .submitForValidation(
-            domainToTest,
             testContract.address,
+            domainToTest,
             payableParams
           )
       ).to.emit(certdao, "DomainSubmittedForValidation");
+
+      expect(owner).to.changeEtherBalance(ethers.utils.parseEther("0.05"));
 
       // Approve the contract
       expect(
@@ -106,7 +108,7 @@ describe("main certdao contract", function () {
       ).to.emit(certdao, "ContractApproved");
 
       // Check that the domain and contract are registered and approved in the struct
-      expect(await certdao.verify(domainToTest, testContract.address)).to.equal(
+      expect(await certdao.verify(testContract.address, domainToTest)).to.equal(
         true
       );
 
@@ -118,6 +120,85 @@ describe("main certdao contract", function () {
       // Check that the status is approved
       expect(await certdao.getDomainStatus(testContract.address)).to.equal(
         "approved"
+      );
+    });
+
+    it("Test various forms of expiration", async function () {
+      const { certdao, addr1, owner } = await loadFixture(deployTokenFixture);
+      // Deploy a second contract to test the validation process
+      const { certdao: testContract, addr2 } = await deployTokenFixture();
+
+      const payableParams = {
+        value: ethers.utils.parseEther("0.05"),
+      };
+
+      const domainToTest = "www.testsite.com";
+
+      // Submit for validation
+      expect(
+        await certdao
+          .connect(addr2)
+          .submitForValidation(
+            testContract.address,
+            domainToTest,
+            payableParams
+          )
+      ).to.emit(certdao, "DomainSubmittedForValidation");
+
+      expect(owner).to.changeEtherBalance(ethers.utils.parseEther("0.05"));
+
+      // Approve the contract
+      expect(
+        await certdao.connect(owner).approve(testContract.address)
+      ).to.emit(certdao, "ContractApproved");
+
+      expect(await certdao.getDomainStatus(testContract.address)).to.equal(
+        "approved"
+      );
+
+      expect(await certdao.verify(testContract.address, domainToTest)).to.equal(
+        true
+      );
+
+      // Increase time by 1.5 years
+      await time.increase(time.duration.years(1.5));
+
+      // Check that the status is expired
+      expect(await certdao.getDomainStatus(testContract.address)).to.equal(
+        "expired"
+      );
+
+      expect(await certdao.verify(testContract.address, domainToTest)).to.equal(
+        false
+      );
+
+      // renew the domain
+      expect(
+        await certdao
+          .connect(addr2)
+          .renew(testContract.address, domainToTest, payableParams)
+      ).to.emit(certdao, "ContractRenewed");
+
+      expect(await certdao.getDomainStatus(testContract.address)).to.equal(
+        "approved"
+      );
+
+      expect(await certdao.verify(testContract.address, domainToTest)).to.equal(
+        true
+      );
+
+      // revoke by owner
+      expect(await certdao.connect(owner).revoke(testContract.address)).to.emit(
+        certdao,
+        "ContractRevoked"
+      );
+
+      expect(await certdao.getDomainStatus(testContract.address)).to.equal(
+        "revoked"
+      );
+
+      expect(await certdao.verify(testContract.address, domainToTest)).to.equal(
+        false
       );
     });
   });
