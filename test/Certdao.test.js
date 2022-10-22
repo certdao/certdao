@@ -90,12 +90,20 @@ describe("main certdao contract", function () {
       const domainToTest = "www.testsite.com";
 
       // Submit for validation
-      await certdao
-        .connect(addr2)
-        .submitForValidation(domainToTest, testContract.address, payableParams);
+      expect(
+        await certdao
+          .connect(addr2)
+          .submitForValidation(
+            domainToTest,
+            testContract.address,
+            payableParams
+          )
+      ).to.emit(certdao, "DomainSubmittedForValidation");
 
       // Approve the contract
-      await certdao.connect(owner).approve(testContract.address);
+      expect(
+        await certdao.connect(owner).approve(testContract.address)
+      ).to.emit(certdao, "ContractApproved");
 
       // Check that the domain and contract are registered and approved in the struct
       expect(await certdao.verify(domainToTest, testContract.address)).to.equal(
@@ -107,7 +115,7 @@ describe("main certdao contract", function () {
         addr2.address
       );
 
-      // Check that the status is pending
+      // Check that the status is approved
       expect(await certdao.getDomainStatus(testContract.address)).to.equal(
         "approved"
       );
