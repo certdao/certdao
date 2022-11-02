@@ -28,7 +28,7 @@ describe("main certdao contract", function () {
 
     it("Should return true if certdao is registered", async function () {
       const { certdao } = await loadFixture(deployTokenFixture);
-      expect(await certdao.verify(certdao.address, "www.certdao.net")).to.equal(
+      expect(await certdao.verify(certdao.address, "certdao.net")).to.equal(
         true
       );
     });
@@ -38,7 +38,9 @@ describe("main certdao contract", function () {
     it("Should not succeed if no funds sent", async function () {
       const { certdao } = await loadFixture(deployTokenFixture);
       await expect(
-        certdao.submitForValidation(certdao.address, "www.certdao.net")
+        certdao.submitForValidation(certdao.address, "certdao.net", "", {
+          value: 0,
+        })
       ).to.be.revertedWith(
         "Please send 0.05 ether to start the validation process."
       );
@@ -54,7 +56,8 @@ describe("main certdao contract", function () {
       await expect(
         certdao.submitForValidation(
           certdao.address,
-          "www.certdao.net",
+          "certdao.net",
+          "",
           payableParams
         )
       ).to.be.revertedWith("Domain name already registered in struct.");
@@ -70,7 +73,8 @@ describe("main certdao contract", function () {
       await expect(
         certdao.submitForValidation(
           certdao.address,
-          "www.certdao.net",
+          "certdao.net",
+          "",
           payableParams
         )
       ).to.be.revertedWith("Domain name already registered in struct.");
@@ -96,6 +100,7 @@ describe("main certdao contract", function () {
           .submitForValidation(
             testContract.address,
             domainToTest,
+            "",
             payableParams
           )
       ).to.emit(certdao, "DomainSubmittedForValidation");
@@ -141,6 +146,7 @@ describe("main certdao contract", function () {
           .submitForValidation(
             testContract.address,
             domainToTest,
+            "",
             payableParams
           )
       ).to.emit(certdao, "DomainSubmittedForValidation");

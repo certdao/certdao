@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract CertDao is Ownable {
 
-    string public constant CERTDAO_DOMAIN = "www.certdao.net";
+    string public constant CERTDAO_DOMAIN = "certdao.net";
     uint32 public constant EXPIRATION_PERIOD = 365 days;
     uint64 public constant PAY_AMOUNT = 0.05 ether;
 
@@ -29,7 +29,9 @@ contract CertDao is Ownable {
         string description;
     }
 
+    mapping(address => address[]) public ownerToContractAddresses;
     mapping(address => domainOwnerInfo) contractAddressTodomainOwner;
+    uint64 public totalContractAddressMappings;
 
     // Validation Event
     event ContractSubmittedForValidation(address indexed contractAddress, string domainName);
@@ -50,6 +52,14 @@ contract CertDao is Ownable {
         domainOwnerInfo memory certDaoOwner = domainOwnerInfo(CERTDAO_DOMAIN, owner(), domainStatus.approved, block.timestamp + 36525 days, "CertDao Owner genisis");
         // Assign the deployment address of the certdao contract as the owner of the certdaeo domain.
         contractAddressTodomainOwner[address(this)] = certDaoOwner;
+    }
+
+    function getContractAddress(address ownerAddress) public view returns (address[] memory) {
+        return ownerToContractAddresses[ownerAddress];
+    }
+
+    function returnAllContractInfo(address contractAddress) public view returns (string memory, address, string memory, uint256, string memory) {
+        return (contractAddressTodomainOwner[contractAddress].domainName, contractAddressTodomainOwner[contractAddress].ownerAddress, domainStatusToString(contractAddressTodomainOwner[contractAddress].status), contractAddressTodomainOwner[contractAddress].timestamp, contractAddressTodomainOwner[contractAddress].description);
     }
 
     function compareStrings(string memory a, string memory b) public pure returns (bool) {
@@ -118,6 +128,8 @@ contract CertDao is Ownable {
         // Add the domain name to the struct
         domainOwnerInfo memory domainOwner = domainOwnerInfo(domainName, msg.sender, domainStatus.pending, block.timestamp, description);
         contractAddressTodomainOwner[contractAddress] = domainOwner;
+        ownerToContractAddresses[msg.sender].push(contractAddress);
+        totalContractAddressMappings++;
         emit ContractSubmittedForValidation(contractAddress, domainName);
     }
 
@@ -144,8 +156,20 @@ contract CertDao is Ownable {
 
     }
 
-    function updateOwner(address contractAddress, string memory newDomainOwner) public payable {
-        requireNotEmptyDomainAndContract(contractAddress, newDomainOwner);
+    function removeContractFromOwnerArray(address contractAddress, address ownerAddress) private {
+        address[] storage contractAddresses = ownerToContractAddresses[ownerAddress];
+        for(uint i = 0; i < contractAddresses.length; i++) {
+            if(contractAddresses[i] == contractAddress) {
+                contractAddresses[i] = contractAddresses[contractAddresses.length - 1];
+                contractAddresses.pop();
+                break;
+            }
+        }
+    }
+
+    function updateOwner(address contractAddress, address newDomainOwner) public payable {
+        require(contractAddress != address(0), "Contract address is empty");
+        require(newDomainOwner!= address(0), "Domain name is empty");
         require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start updateOwner process.");
         require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress, "Only the owner of the domain can update the owner.");
 
@@ -153,8 +177,9 @@ contract CertDao is Ownable {
         (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
         require(sent, "Failed to send Ether!");
 
-        contractAddressTodomainOwner[contractAddress].ownerAddress = msg.sender;
-
+        contractAddressTodomainOwner[contractAddress].ownerAddress = newDomainOwner;
+        ownerToContractAddresses[newDomainOwner].push(contractAddress);
+        removeContractFromOwnerArray(contractAddress, msg.sender);
     }
 
     function transferContractToNewDomain(address newContractAddress, string memory domainOwner) public payable {

@@ -22,36 +22,42 @@ async function main() {
 
   console.log("Account balance:", (await deployer.getBalance()).toString());
 
-  const certdao = await ethers.getContractFactory("CertDaoToken");
+  const certdao = await ethers.getContractFactory("CertDao");
   const certdaoDeployed = await certdao.deploy();
   await certdaoDeployed.deployed();
 
   console.log("Certdao address:", certdaoDeployed.address);
 
   // We also save the contract's artifacts and address in the frontend directory
-  // saveFrontendFiles(certdao);
+  saveFrontendFiles(certdao);
 }
 
-// function saveFrontendFiles(certdao) {
-//   const fs = require("fs");
-//   const contractsDir = path.join(__dirname, "..", "frontend", "src", "contracts");
+function saveFrontendFiles(certdao) {
+  const fs = require("fs");
+  const contractsDir = path.join(
+    __dirname,
+    "../../",
+    "certDAO-frontend",
+    "src",
+    "data"
+  );
 
-//   if (!fs.existsSync(contractsDir)) {
-//     fs.mkdirSync(contractsDir);
-//   }
+  if (!fs.existsSync(contractsDir)) {
+    fs.mkdirSync(contractsDir);
+  }
 
-//   fs.writeFileSync(
-//     path.join(contractsDir, "contract-address.json"),
-//     JSON.stringify({ certdao: certdao.address }, undefined, 2)
-//   );
+  fs.writeFileSync(
+    path.join(contractsDir, "contract-address.json"),
+    JSON.stringify({ certdao: certdao.address }, undefined, 2)
+  );
 
-//   const certdaoArtifact = artifacts.readArtifactSync("certdao");
+  const certdaoArtifact = artifacts.readArtifactSync("CertDao");
 
-//   fs.writeFileSync(
-//     path.join(contractsDir, "certdao.json"),
-//     JSON.stringify(certdaoArtifact, null, 2)
-//   );
-// }
+  fs.writeFileSync(
+    path.join(contractsDir, "certdao.json"),
+    JSON.stringify(certdaoArtifact, null, 2)
+  );
+}
 
 main()
   .then(() => process.exit(0))
