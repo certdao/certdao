@@ -50,7 +50,7 @@ contract CertDao is Ownable {
 
     constructor() {
         domainOwnerInfo memory certDaoOwner = domainOwnerInfo(CERTDAO_DOMAIN, owner(), domainStatus.approved, block.timestamp + 36525 days, "CertDao Owner genisis");
-        // Assign the deployment address of the certdao contract as the owner of the certdaeo domain.
+        // Assign the deployment address of the certdao contract as the owner of the certdao domain.
         contractAddressTodomainOwner[address(this)] = certDaoOwner;
     }
 
