@@ -128,10 +128,6 @@ contract CertDao is ICertDao, Ownable {
             "Domain name already registered in struct."
         );
 
-        // Send 0.05 ether to the owner of the contract
-        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
-        require(sent, "Failed to send Ether!");
-
         // Add the domain name to the struct
         DomainOwnerInfo memory domainOwner = DomainOwnerInfo(
             domainName,
@@ -143,6 +139,11 @@ contract CertDao is ICertDao, Ownable {
         contractAddressToDomainOwner[contractAddress] = domainOwner;
         ownerToContractAddresses[msg.sender].push(contractAddress);
         totalContractAddressMappings++;
+
+        // Send 0.05 ether to the owner of the contract
+        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
+        require(sent, "Failed to send Ether!");
+
         emit ContractSubmittedForValidation(contractAddress, domainName);
     }
 
@@ -161,13 +162,13 @@ contract CertDao is ICertDao, Ownable {
         require(_newDomainOwner != address(0), "Domain name is empty");
         require(msg.value == PAY_AMOUNT, "updateOwner requieres 0.05 ether");
 
+        domainOwnerInfo.ownerAddress = _newDomainOwner;
+        ownerToContractAddresses[_newDomainOwner].push(_contractAddress);
+        _removeContractFromOwnerArray(_contractAddress, msg.sender);
+
         // Send 0.05 ether to the owner of the contract
         (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
         require(sent, "Failed to send Ether!");
-
-        domainOwnerInfo.ownerAddress = _newDomainOwner;
-        ownerToContractAddresses[_newDomainOwner].push(_contractAddress);
-        removeContractFromOwnerArray(_contractAddress, msg.sender);
     }
 
     function transferContractToNewDomain(
@@ -215,17 +216,19 @@ contract CertDao is ICertDao, Ownable {
                     msg.value == PAY_AMOUNT,
                     "Please send 0.05 ether to renew the domain."
                 );
+                contractAddressToDomainOwner[contractAddress].timestamp = block
+                    .timestamp;
+
                 (bool sent, bytes memory data) = owner().call{
                     value: PAY_AMOUNT
                 }("");
-                require(sent, "Failed to send Ether!");
-                contractAddressToDomainOwner[contractAddress].timestamp = block
-                    .timestamp;
+
                 emit ContractRenewed(
                     contractAddress,
                     domainName,
                     DomainStatus.approved
                 );
+                require(sent, "Failed to send Ether!");
             } else {
                 console.log("Domain is not expired yet.");
             }
@@ -253,19 +256,20 @@ contract CertDao is ICertDao, Ownable {
             string memory
         )
     {
+        DomainOwnerInfo storage domainInfo = contractAddressToDomainOwner[
+            contractAddress
+        ];
         return (
-            contractAddressToDomainOwner[contractAddress].domainName,
-            contractAddressToDomainOwner[contractAddress].ownerAddress,
-            DomainStatusToString(
-                contractAddressToDomainOwner[contractAddress].status
-            ),
-            contractAddressToDomainOwner[contractAddress].timestamp,
-            contractAddressToDomainOwner[contractAddress].description
+            domainInfo.domainName,
+            domainInfo.ownerAddress,
+            DomainStatusToString(domainInfo.status),
+            domainInfo.timestamp,
+            domainInfo.description
         );
     }
 
     function getDomainOwner(address contractAddress)
-        public
+        external
         view
         returns (address)
     {
@@ -304,7 +308,7 @@ contract CertDao is ICertDao, Ownable {
     }
 
     function getDomainStatus(address contractAddress)
-        public
+        external
         view
         returns (string memory)
     {
@@ -320,7 +324,7 @@ contract CertDao is ICertDao, Ownable {
     }
 
     function getDomainDescription(address contractAddress)
-        public
+        external
         view
         returns (string memory)
     {
@@ -329,7 +333,7 @@ contract CertDao is ICertDao, Ownable {
     }
 
     function getDomainName(address contractAddress)
-        public
+        external
         view
         returns (string memory)
     {
@@ -338,7 +342,7 @@ contract CertDao is ICertDao, Ownable {
     }
 
     function verify(address contractAddress, string memory domainName)
-        public
+        external
         view
         precheck(contractAddress, domainName)
         returns (bool)
@@ -372,7 +376,7 @@ contract CertDao is ICertDao, Ownable {
 
     /* ============ Private Functions ============ */
 
-    function removeContractFromOwnerArray(
+    function _removeContractFromOwnerArray(
         address contractAddress,
         address ownerAddress
     ) private {
