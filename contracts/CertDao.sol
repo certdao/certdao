@@ -1,18 +1,21 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
 import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./interfaces/ICertDao.sol";
 
-contract CertDao is Ownable {
+contract CertDao is ICertDao, Ownable {
+    /* ============ Constants ============ */
 
     string public constant CERTDAO_DOMAIN = "certdao.net";
     uint32 public constant EXPIRATION_PERIOD = 365 days;
     uint64 public constant PAY_AMOUNT = 0.05 ether;
 
-    enum domainStatus {
+    /* ============ Structures ============ */
+
+    enum DomainStatus {
         pending,
         expired,
         approved,
@@ -21,232 +24,455 @@ contract CertDao is Ownable {
         manualFlag
     }
 
-    struct domainOwnerInfo {
+    struct DomainOwnerInfo {
         string domainName;
         address ownerAddress;
-        domainStatus status;
+        DomainStatus status;
         uint256 timestamp;
         string description;
     }
 
+    /* ============ State ============ */
+
     mapping(address => address[]) public ownerToContractAddresses;
-    mapping(address => domainOwnerInfo) contractAddressTodomainOwner;
+    mapping(address => DomainOwnerInfo) public contractAddressToDomainOwner;
     uint64 public totalContractAddressMappings;
 
+    /* ============ Events ============ */
+
     // Validation Event
-    event ContractSubmittedForValidation(address indexed contractAddress, string domainName);
+    event ContractSubmittedForValidation(
+        address indexed contractAddress,
+        string indexed domainName
+    );
     // Approval Event
-    event ContractApproved(address indexed contractAddress, string domainName, domainStatus status);
+    event ContractApproved(
+        address indexed contractAddress,
+        string indexed domainName,
+        DomainStatus status
+    );
     // Renewal Event
-    event ContractRenewed(address indexed contractAddress, string domainName, domainStatus status);
+    event ContractRenewed(
+        address indexed contractAddress,
+        string indexed domainName,
+        DomainStatus status
+    );
     // Rejection Event
-    event ContractRejected(address indexed contractAddress, string domainName, string description);
+    event ContractRejected(
+        address indexed contractAddress,
+        string indexed domainName,
+        string description
+    );
     // Manual Flag Event
-    event ContractManuallyFlag(address indexed contractAddress, string domainName, string description);
+    event ContractManuallyFlag(
+        address indexed contractAddress,
+        string indexed domainName,
+        string description
+    );
     // Revocation Event
-    event ContractRevoked(address indexed contractAddress, string domainName, string description);
+    event ContractRevoked(
+        address indexed contractAddress,
+        string indexed domainName,
+        string description
+    );
     // Expiration Event
-    event ContractExpired(address indexed contractAddress, string domainName, string description);
+    event ContractExpired(
+        address indexed contractAddress,
+        string indexed domainName,
+        string description
+    );
+
+    /* ============ Internal ============ */
 
     constructor() {
-        domainOwnerInfo memory certDaoOwner = domainOwnerInfo(CERTDAO_DOMAIN, owner(), domainStatus.approved, block.timestamp + 36525 days, "CertDao Owner genisis");
+        DomainOwnerInfo memory certDaoOwner = DomainOwnerInfo(
+            CERTDAO_DOMAIN,
+            owner(),
+            DomainStatus.approved,
+            block.timestamp + 36525 days,
+            "CertDao Owner genesis"
+        );
         // Assign the deployment address of the certdao contract as the owner of the certdao domain.
-        contractAddressTodomainOwner[address(this)] = certDaoOwner;
+        contractAddressToDomainOwner[address(this)] = certDaoOwner;
     }
 
-    function getContractAddress(address ownerAddress) public view returns (address[] memory) {
-        return ownerToContractAddresses[ownerAddress];
-    }
-
-    function returnAllContractInfo(address contractAddress) public view returns (string memory, address, string memory, uint256, string memory) {
-        return (contractAddressTodomainOwner[contractAddress].domainName, contractAddressTodomainOwner[contractAddress].ownerAddress, domainStatusToString(contractAddressTodomainOwner[contractAddress].status), contractAddressTodomainOwner[contractAddress].timestamp, contractAddressTodomainOwner[contractAddress].description);
-    }
-
-    function compareStrings(string memory a, string memory b) public pure returns (bool) {
-        return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
-    }
-
-    function getDomainOwner(address contractAddress) public view returns (address) {
-        return contractAddressTodomainOwner[contractAddress].ownerAddress;
-    }
-
-    function domainStatusToString(domainStatus status) public pure returns (string memory) {
-        if (status == domainStatus.pending) {
-            return "pending";
-        } else if (status == domainStatus.expired) {
-            return "expired";
-        } else if (status == domainStatus.approved) {
-            return "approved";
-        } else if (status == domainStatus.rejected) {
-            return "rejected";
-        } else if (status == domainStatus.revoked) {
-            return "revoked";
-        } else if (status == domainStatus.manualFlag) {
-            return "manualFlag";
-        } else {
-            return "unknown";
-        }
-    }
-
-    function getDomainStatus(address contractAddress) public view returns (string memory) {
-        require(contractAddress != address(0), "Contract address is empty");
-        domainOwnerInfo memory domain = contractAddressTodomainOwner[contractAddress];
-        if(domain.timestamp + EXPIRATION_PERIOD < block.timestamp) {
-            return domainStatusToString(domainStatus.expired);
-        } else {
-            return domainStatusToString(domain.status);
-        }
-    }
-
-    function getDomainDescription(address contractAddress) public view returns (string memory) {
-        require(contractAddress != address(0), "Contract address is empty");
-        return contractAddressTodomainOwner[contractAddress].description;
-    }
-
-    function getDomainName(address contractAddress) public view returns (string memory) {
-        require(contractAddress != address(0), "Contract address is empty");
-        return contractAddressTodomainOwner[contractAddress].domainName;
-    }
-
-    function requireNotEmptyDomainAndContract(address contractAddress, string memory domainName) private pure {
+    modifier precheck(address contractAddress, string memory domainName) {
         require(bytes(domainName).length != 0, "Domain name is empty");
         require(contractAddress != address(0), "Contract address is empty");
+        _;
     }
 
-    function submitForValidation(address contractAddress, string memory domainName, string memory description) public payable {
-        console.log("Domain Name: %s, Contract: %s", domainName, contractAddress);
-        requireNotEmptyDomainAndContract(contractAddress, domainName);
+    /* ============ External Functions ============ */
 
-        require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start the validation process.");
+    function submitForValidation(
+        address contractAddress,
+        string memory domainName,
+        string memory description
+    ) external payable precheck(contractAddress, domainName) {
+        console.log(
+            "Domain Name: %s, Contract: %s",
+            domainName,
+            contractAddress
+        );
 
-        require(compareStrings(contractAddressTodomainOwner[contractAddress].domainName, ""), "Domain name already registered in struct.");
+        require(
+            msg.value == PAY_AMOUNT,
+            "Please send 0.05 ether to start the validation process."
+        );
+
+        require(
+            compareStrings(
+                contractAddressToDomainOwner[contractAddress].domainName,
+                ""
+            ),
+            "Domain name already registered in struct."
+        );
 
         // Send 0.05 ether to the owner of the contract
         (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
         require(sent, "Failed to send Ether!");
 
         // Add the domain name to the struct
-        domainOwnerInfo memory domainOwner = domainOwnerInfo(domainName, msg.sender, domainStatus.pending, block.timestamp, description);
-        contractAddressTodomainOwner[contractAddress] = domainOwner;
+        DomainOwnerInfo memory domainOwner = DomainOwnerInfo(
+            domainName,
+            msg.sender,
+            DomainStatus.pending,
+            block.timestamp,
+            description
+        );
+        contractAddressToDomainOwner[contractAddress] = domainOwner;
         ownerToContractAddresses[msg.sender].push(contractAddress);
         totalContractAddressMappings++;
         emit ContractSubmittedForValidation(contractAddress, domainName);
     }
 
-    function verify(address contractAddress, string memory domainName) view public returns (bool) {
+    function updateOwner(address _contractAddress, address _newDomainOwner)
+        external
+        payable
+    {
+        DomainOwnerInfo storage domainOwnerInfo = contractAddressToDomainOwner[
+            _contractAddress
+        ];
+        require(
+            msg.sender == domainOwnerInfo.ownerAddress,
+            "Only the owner of the domain can update the owner"
+        );
+        require(_contractAddress != address(0), "Contract address is empty");
+        require(_newDomainOwner != address(0), "Domain name is empty");
+        require(msg.value == PAY_AMOUNT, "updateOwner requieres 0.05 ether");
+
+        // Send 0.05 ether to the owner of the contract
+        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
+        require(sent, "Failed to send Ether!");
+
+        domainOwnerInfo.ownerAddress = _newDomainOwner;
+        ownerToContractAddresses[_newDomainOwner].push(_contractAddress);
+        removeContractFromOwnerArray(_contractAddress, msg.sender);
+    }
+
+    function transferContractToNewDomain(
+        address newContractAddress,
+        string memory domainOwner
+    ) external payable precheck(newContractAddress, domainOwner) {
+        require(
+            msg.sender ==
+                contractAddressToDomainOwner[newContractAddress].ownerAddress,
+            "You are not the owner of the contract to transfer domains."
+        );
+        require(
+            contractAddressToDomainOwner[newContractAddress].status ==
+                DomainStatus.approved,
+            "Contract is not approved."
+        );
+        require(
+            msg.value == PAY_AMOUNT,
+            "Please send 0.05 ether to start transferContract process."
+        );
+    }
+
+    function renew(address contractAddress, string memory domainName)
+        external
+        payable
+        precheck(contractAddress, domainName)
+    {
+        require(
+            msg.sender ==
+                contractAddressToDomainOwner[contractAddress].ownerAddress ||
+                msg.sender == owner(),
+            "Only the owner of the contract or DAO can renew the domain mapping."
+        );
+
+        if (
+            contractAddressToDomainOwner[contractAddress].status ==
+            DomainStatus.approved
+        ) {
+            if (
+                contractAddressToDomainOwner[contractAddress].timestamp +
+                    EXPIRATION_PERIOD <
+                block.timestamp
+            ) {
+                require(
+                    msg.value == PAY_AMOUNT,
+                    "Please send 0.05 ether to renew the domain."
+                );
+                (bool sent, bytes memory data) = owner().call{
+                    value: PAY_AMOUNT
+                }("");
+                require(sent, "Failed to send Ether!");
+                contractAddressToDomainOwner[contractAddress].timestamp = block
+                    .timestamp;
+                emit ContractRenewed(
+                    contractAddress,
+                    domainName,
+                    DomainStatus.approved
+                );
+            } else {
+                console.log("Domain is not expired yet.");
+            }
+        }
+    }
+
+    /* ============ External View Functions ============ */
+
+    function getContractAddress(address _ownerAddress)
+        public
+        view
+        returns (address[] memory)
+    {
+        return ownerToContractAddresses[_ownerAddress];
+    }
+
+    function returnAllContractInfo(address contractAddress)
+        public
+        view
+        returns (
+            string memory,
+            address,
+            string memory,
+            uint256,
+            string memory
+        )
+    {
+        return (
+            contractAddressToDomainOwner[contractAddress].domainName,
+            contractAddressToDomainOwner[contractAddress].ownerAddress,
+            DomainStatusToString(
+                contractAddressToDomainOwner[contractAddress].status
+            ),
+            contractAddressToDomainOwner[contractAddress].timestamp,
+            contractAddressToDomainOwner[contractAddress].description
+        );
+    }
+
+    function getDomainOwner(address contractAddress)
+        public
+        view
+        returns (address)
+    {
+        return contractAddressToDomainOwner[contractAddress].ownerAddress;
+    }
+
+    function compareStrings(string memory a, string memory b)
+        public
+        pure
+        returns (bool)
+    {
+        return (keccak256(abi.encodePacked((a))) ==
+            keccak256(abi.encodePacked((b))));
+    }
+
+    function DomainStatusToString(DomainStatus status)
+        public
+        pure
+        returns (string memory)
+    {
+        if (status == DomainStatus.pending) {
+            return "pending";
+        } else if (status == DomainStatus.expired) {
+            return "expired";
+        } else if (status == DomainStatus.approved) {
+            return "approved";
+        } else if (status == DomainStatus.rejected) {
+            return "rejected";
+        } else if (status == DomainStatus.revoked) {
+            return "revoked";
+        } else if (status == DomainStatus.manualFlag) {
+            return "manualFlag";
+        } else {
+            return "unknown";
+        }
+    }
+
+    function getDomainStatus(address contractAddress)
+        public
+        view
+        returns (string memory)
+    {
+        require(contractAddress != address(0), "Contract address is empty");
+        DomainOwnerInfo memory domain = contractAddressToDomainOwner[
+            contractAddress
+        ];
+        if (domain.timestamp + EXPIRATION_PERIOD < block.timestamp) {
+            return DomainStatusToString(DomainStatus.expired);
+        } else {
+            return DomainStatusToString(domain.status);
+        }
+    }
+
+    function getDomainDescription(address contractAddress)
+        public
+        view
+        returns (string memory)
+    {
+        require(contractAddress != address(0), "Contract address is empty");
+        return contractAddressToDomainOwner[contractAddress].description;
+    }
+
+    function getDomainName(address contractAddress)
+        public
+        view
+        returns (string memory)
+    {
+        require(contractAddress != address(0), "Contract address is empty");
+        return contractAddressToDomainOwner[contractAddress].domainName;
+    }
+
+    function verify(address contractAddress, string memory domainName)
+        public
+        view
+        precheck(contractAddress, domainName)
+        returns (bool)
+    {
         console.log("Inputs: %s, %s", domainName, contractAddress);
 
-        requireNotEmptyDomainAndContract(contractAddress, domainName);
+        DomainOwnerInfo memory domainOwner = contractAddressToDomainOwner[
+            contractAddress
+        ];
 
-        domainOwnerInfo memory domainOwner = contractAddressTodomainOwner[contractAddress];
-
-        if(compareStrings(domainOwner.domainName, domainName) && domainOwner.status == domainStatus.approved) {
-            if(domainOwner.timestamp + EXPIRATION_PERIOD > block.timestamp) {
+        if (
+            compareStrings(domainOwner.domainName, domainName) &&
+            domainOwner.status == DomainStatus.approved
+        ) {
+            if (domainOwner.timestamp + EXPIRATION_PERIOD > block.timestamp) {
                 console.log("Contract is verified");
                 return true;
-            }
-            else {
-                console.log("Domain name and contract address match but domain is expired");
+            } else {
+                console.log(
+                    "Domain name and contract address match but domain is expired"
+                );
                 return false;
             }
         } else {
-            console.log("Domain name and contract address do not match or contract is not approved. Check contract state");
+            console.log(
+                "Domain name and contract address do not match or contract is not approved. Check contract state"
+            );
             return false;
         }
-
     }
 
-    function removeContractFromOwnerArray(address contractAddress, address ownerAddress) private {
-        address[] storage contractAddresses = ownerToContractAddresses[ownerAddress];
-        for(uint i = 0; i < contractAddresses.length; i++) {
-            if(contractAddresses[i] == contractAddress) {
-                contractAddresses[i] = contractAddresses[contractAddresses.length - 1];
+    /* ============ Private Functions ============ */
+
+    function removeContractFromOwnerArray(
+        address contractAddress,
+        address ownerAddress
+    ) private {
+        address[] storage contractAddresses = ownerToContractAddresses[
+            ownerAddress
+        ];
+        for (uint256 i = 0; i < contractAddresses.length; i++) {
+            if (contractAddresses[i] == contractAddress) {
+                contractAddresses[i] = contractAddresses[
+                    contractAddresses.length - 1
+                ];
                 contractAddresses.pop();
                 break;
             }
         }
     }
 
-    function updateOwner(address contractAddress, address newDomainOwner) public payable {
-        require(contractAddress != address(0), "Contract address is empty");
-        require(newDomainOwner!= address(0), "Domain name is empty");
-        require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start updateOwner process.");
-        require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress, "Only the owner of the domain can update the owner.");
+    /* ============ External Owner Functions ============ */
 
-        // Send 0.05 ether to the owner of the contract
-        (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
-        require(sent, "Failed to send Ether!");
-
-        contractAddressTodomainOwner[contractAddress].ownerAddress = newDomainOwner;
-        ownerToContractAddresses[newDomainOwner].push(contractAddress);
-        removeContractFromOwnerArray(contractAddress, msg.sender);
-    }
-
-    function transferContractToNewDomain(address newContractAddress, string memory domainOwner) public payable {
-        requireNotEmptyDomainAndContract(newContractAddress, domainOwner);
-        require(msg.sender == contractAddressTodomainOwner[newContractAddress].ownerAddress, "You are not the owner of the contract to transfer domains.");
-        require(contractAddressTodomainOwner[newContractAddress].status == domainStatus.approved, "Contract is not approved.");
-        require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to start transferContract process.");
-    }
-
-    function manualFlag(address contractAddress, string memory domainName, string memory description) public onlyOwner {
+    function manualFlag(
+        address contractAddress,
+        string memory domainName,
+        string memory description
+    ) public onlyOwner {
         // Manual flagging of a contract.
         require(contractAddress != address(0), "Contract address is empty");
-        contractAddressTodomainOwner[contractAddress].status = domainStatus.manualFlag;
-        if(bytes(domainName).length != 0) {
-            contractAddressTodomainOwner[contractAddress].domainName = domainName;
+        DomainOwnerInfo storage domainInfo = contractAddressToDomainOwner[
+            contractAddress
+        ];
+        domainInfo.status = DomainStatus.manualFlag;
+        if (bytes(domainName).length != 0) {
+            domainInfo.domainName = domainName;
         }
-        if(bytes(description).length != 0) {
-            contractAddressTodomainOwner[contractAddress].description = description;
+        if (bytes(description).length != 0) {
+            domainInfo.description = description;
         }
-        emit ContractManuallyFlag(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, description);
+        emit ContractManuallyFlag(
+            contractAddress,
+            domainInfo.domainName,
+            description
+        );
     }
 
-    function renew(address contractAddress, string memory domainName) public payable {
-        requireNotEmptyDomainAndContract(contractAddress, domainName);
-
-        require(msg.sender == contractAddressTodomainOwner[contractAddress].ownerAddress || msg.sender == owner(), "Only the owner of the contract or DAO can renew the domain mapping.");
-
-        if(contractAddressTodomainOwner[contractAddress].status == domainStatus.approved) {
-            if(contractAddressTodomainOwner[contractAddress].timestamp + EXPIRATION_PERIOD < block.timestamp) {
-                require(msg.value == PAY_AMOUNT, "Please send 0.05 ether to renew the domain.");
-                (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
-                require(sent, "Failed to send Ether!");
-                contractAddressTodomainOwner[contractAddress].timestamp = block.timestamp;
-                emit ContractRenewed(contractAddress, domainName, domainStatus.approved);
-            }
-            else {
-                console.log("Domain is not expired yet.");
-            }
-        }
-    }
-
-    function revoke(address contractAddress) public onlyOwner {
-         requireNotEmptyDomainAndContract(contractAddress, contractAddressTodomainOwner[contractAddress].domainName);
-        if(contractAddressTodomainOwner[contractAddress].status != domainStatus.revoked) {
-            contractAddressTodomainOwner[contractAddress].status = domainStatus.revoked;
-            emit ContractRevoked(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, "Contract revoked by DAO");
-        }
-    }
-
-    function approve(address contractAddress) public onlyOwner {
-        requireNotEmptyDomainAndContract(contractAddress, contractAddressTodomainOwner[contractAddress].domainName);
-        if(contractAddressTodomainOwner[contractAddress].status != domainStatus.approved) {
-            contractAddressTodomainOwner[contractAddress].status = domainStatus.approved;
-            emit ContractApproved(contractAddress, contractAddressTodomainOwner[contractAddress].domainName, domainStatus.approved);
+    function revoke(address contractAddress)
+        public
+        onlyOwner
+        precheck(
+            contractAddress,
+            contractAddressToDomainOwner[contractAddress].domainName
+        )
+    {
+        DomainOwnerInfo storage domainInfo = contractAddressToDomainOwner[
+            contractAddress
+        ];
+        if (domainInfo.status != DomainStatus.revoked) {
+            domainInfo.status = DomainStatus.revoked;
+            emit ContractRevoked(
+                contractAddress,
+                domainInfo.domainName,
+                "Contract revoked by DAO"
+            );
         }
     }
 
-    function batchApprove(address[] memory contractAddresses) public onlyOwner {
-        for(uint i = 0; i < contractAddresses.length; i++) {
+    function approve(address contractAddress)
+        public
+        onlyOwner
+        precheck(
+            contractAddress,
+            contractAddressToDomainOwner[contractAddress].domainName
+        )
+    {
+        DomainOwnerInfo storage domainInfo = contractAddressToDomainOwner[
+            contractAddress
+        ];
+        if (domainInfo.status != DomainStatus.approved) {
+            domainInfo.status = DomainStatus.approved;
+            emit ContractApproved(
+                contractAddress,
+                domainInfo.domainName,
+                DomainStatus.approved
+            );
+        }
+    }
+
+    function batchApprove(address[] memory contractAddresses)
+        external
+        onlyOwner
+    {
+        for (uint256 i = 0; i < contractAddresses.length; i++) {
             approve(contractAddresses[i]);
         }
     }
 
-    function batchRevoke(address[] memory contractAddresses) public onlyOwner {
-        for(uint i = 0; i < contractAddresses.length; i++) {
+    function batchRevoke(address[] memory contractAddresses)
+        external
+        onlyOwner
+    {
+        for (uint256 i = 0; i < contractAddresses.length; i++) {
             revoke(contractAddresses[i]);
         }
     }
-
 }
