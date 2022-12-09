@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 /// @custom:security-contact certdao@proton.me
 contract CertDaoToken is ERC20, ERC20Burnable, Pausable, Ownable, ERC20Permit, ERC20Votes {
     constructor() ERC20("CertDaoToken", "CRT") ERC20Permit("CertDaoToken") {
+        // TODO: FIGURE OUT DISTRIBUTION
         _mint(msg.sender, 100000000 * 10 ** decimals());
     }
 

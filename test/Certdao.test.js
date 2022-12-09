@@ -60,7 +60,9 @@ describe("main certdao contract", function () {
           "",
           payableParams
         )
-      ).to.be.revertedWith("Domain name already registered in struct.");
+      ).to.be.revertedWith(
+        "Contract address already has a domain registered in the struct."
+      );
     });
 
     it("Should not succeed if contract already registered", async function () {
@@ -77,7 +79,9 @@ describe("main certdao contract", function () {
           "",
           payableParams
         )
-      ).to.be.revertedWith("Domain name already registered in struct.");
+      ).to.be.revertedWith(
+        "Contract address already has a domain registered in the struct."
+      );
     });
 
     it("Fully validation should succeed.", async function () {
