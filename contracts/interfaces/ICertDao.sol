@@ -2,6 +2,17 @@
 pragma solidity ^0.8.9;
 
 interface ICertDao {
+
+    /* ============ Enums ============ */
+    enum DomainStatus {
+        pending,
+        expired,
+        approved,
+        rejected,
+        revoked,
+        manualFlag
+    }
+
     /* ============ External Functions ============ */
 
     function submitForValidation(
@@ -67,6 +78,14 @@ interface ICertDao {
         returns (bool);
 
     /* ============ External Owner Functions ============ */
+
+    function ownerCreation(
+        address contractAddress,
+        address owner,
+        DomainStatus status,
+        string memory domainName,
+        string memory description
+    ) external;
 
     function manualFlag(
         address contractAddress,

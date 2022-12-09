@@ -15,15 +15,6 @@ contract CertDao is ICertDao, Ownable {
 
     /* ============ Structures ============ */
 
-    enum DomainStatus {
-        pending,
-        expired,
-        approved,
-        rejected,
-        revoked,
-        manualFlag
-    }
-
     struct DomainOwnerInfo {
         string domainName;
         address ownerAddress;
@@ -81,6 +72,14 @@ contract CertDao is ICertDao, Ownable {
         string indexed domainName,
         string description
     );
+    // Owner creation Event
+    event OwnerCreated(
+        address indexed contractAddress,
+        address indexed owner,
+        string indexed domainName,
+        string domainStatus,
+        string description
+    );
 
     /* ============ Internal ============ */
 
@@ -109,11 +108,6 @@ contract CertDao is ICertDao, Ownable {
         string memory domainName,
         string memory description
     ) external payable precheck(contractAddress, domainName) {
-        console.log(
-            "Domain Name: %s, Contract: %s",
-            domainName,
-            contractAddress
-        );
 
         require(
             msg.value == PAY_AMOUNT,
@@ -231,6 +225,7 @@ contract CertDao is ICertDao, Ownable {
                 require(sent, "Failed to send Ether!");
             } else {
                 console.log("Domain is not expired yet.");
+                return;
             }
         }
     }
@@ -395,6 +390,41 @@ contract CertDao is ICertDao, Ownable {
     }
 
     /* ============ External Owner Functions ============ */
+
+    function ownerCreation(
+        address contractAddress,
+        address owner,
+        DomainStatus status,
+        string memory domainName,
+        string memory description
+    ) public onlyOwner precheck(contractAddress, domainName) {
+        require(
+            compareStrings(
+                contractAddressToDomainOwner[contractAddress].domainName,
+                ""),
+            "Contract address already has a domain registered in the struct."
+        );
+
+        // Add the domain name to the struct
+        DomainOwnerInfo memory domainOwner = DomainOwnerInfo(
+            domainName,
+            owner,
+            status,
+            block.timestamp,
+            description
+        );
+        contractAddressToDomainOwner[contractAddress] = domainOwner;
+        ownerToContractAddresses[owner].push(contractAddress);
+        totalContractAddressMappings++;
+
+        emit OwnerCreated(
+            contractAddress,
+            owner,
+            domainName,
+            DomainStatusToString(status),
+            description
+        );
+    }
 
     function manualFlag(
         address contractAddress,
