@@ -125,7 +125,7 @@ contract CertDao is ICertDao, Ownable {
                 contractAddressToDomainOwner[contractAddress].domainName,
                 ""
             ),
-            "Domain name already registered in struct."
+            "Contract address already has a domain registered in the struct."
         );
 
         // Add the domain name to the struct
