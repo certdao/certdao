@@ -27,7 +27,10 @@ contract CertDao is ICertDao, Ownable {
 
     mapping(address => address[]) public ownerToContractAddresses;
     mapping(address => DomainOwnerInfo) public contractAddressToDomainOwner;
-    uint64 public totalContractAddressMappings;
+    uint256 public totalContractAddressMappings;
+
+    address[] public contractAddresses;
+    uint256 public totalContractAddresses;
 
     /* ============ Events ============ */
 
@@ -93,6 +96,8 @@ contract CertDao is ICertDao, Ownable {
         );
         // Assign the deployment address of the certdao contract as the owner of the certdao domain.
         contractAddressToDomainOwner[address(this)] = certDaoOwner;
+        contractAddresses.push(address(this));
+        totalContractAddresses++;
     }
 
     modifier precheck(address contractAddress, string memory domainName) {
@@ -130,9 +135,14 @@ contract CertDao is ICertDao, Ownable {
             block.timestamp,
             description
         );
+
         contractAddressToDomainOwner[contractAddress] = domainOwner;
+
         ownerToContractAddresses[msg.sender].push(contractAddress);
         totalContractAddressMappings++;
+
+        contractAddresses.push(contractAddress);
+        totalContractAddresses++;
 
         // Send 0.05 ether to the owner of the contract
         (bool sent, bytes memory data) = owner().call{value: PAY_AMOUNT}("");
@@ -336,6 +346,54 @@ contract CertDao is ICertDao, Ownable {
         return contractAddressToDomainOwner[contractAddress].domainName;
     }
 
+    function getDomainRegistrationTime(address contractAddress)
+        external
+        view
+        returns (uint256)
+    {
+        require(contractAddress != address(0), "Contract address is empty");
+        return contractAddressToDomainOwner[contractAddress].timestamp;
+    }
+
+    function getDomainExpirationTime(address contractAddress)
+        external
+        view
+        returns (uint256)
+    {
+        require(contractAddress != address(0), "Contract address is empty");
+        return
+            contractAddressToDomainOwner[contractAddress].timestamp +
+            EXPIRATION_PERIOD;
+    }
+
+    function getAllContracts() external view returns (address[] memory) {
+        return contractAddresses;
+    }
+
+    function getAllContractsWithStatus(DomainStatus status)
+        external
+        view
+        returns (address[] memory)
+    {
+        address[] memory statusToContractAddresses = new address[](
+            totalContractAddresses
+        );
+
+        uint256 index = 0;
+        for(uint256 i = 0; i < totalContractAddresses; i++) {
+            if(contractAddressToDomainOwner[contractAddresses[i]].status == status) {
+                statusToContractAddresses[index] = contractAddresses[i];
+                index++;
+            }
+        }
+
+        return statusToContractAddresses;
+    }
+
+    function getTotalContractCount() external view returns (uint256) {
+        return totalContractAddresses;
+    }
+
     function verify(address contractAddress, string memory domainName)
         external
         view
@@ -414,8 +472,12 @@ contract CertDao is ICertDao, Ownable {
             description
         );
         contractAddressToDomainOwner[contractAddress] = domainOwner;
+
         ownerToContractAddresses[owner].push(contractAddress);
         totalContractAddressMappings++;
+
+        contractAddresses.push(contractAddress);
+        totalContractAddresses++;
 
         emit OwnerCreated(
             contractAddress,

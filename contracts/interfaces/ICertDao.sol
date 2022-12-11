@@ -72,6 +72,25 @@ interface ICertDao {
         view
         returns (string memory);
 
+    function getDomainRegistrationTime(address contractAddress)
+        external
+        view
+        returns (uint256);
+
+    function getDomainExpirationTime(address contractAddress)
+        external
+        view
+        returns (uint256);
+
+    function getAllContracts() external view returns (address[] memory);
+
+    function getAllContractsWithStatus(DomainStatus status)
+        external
+        view
+        returns (address[] memory);
+
+    function getTotalContractCount() external view returns (uint256);
+
     function verify(address contractAddress, string memory domainName)
         external
         view
