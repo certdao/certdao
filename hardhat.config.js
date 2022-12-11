@@ -3,7 +3,7 @@ if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
 
-const ALCHEMY_GOERLI_API_KEY = process.env.ALCHEMY_API_KEY;
+const ALCHEMY_GOERLI_API_KEY = process.env.ALCHEMY_GOERLI_API_KEY;
 const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
 const ALCHEMY_MAINNET_API_KEY = process.env.ALCHEMY_MAINNET_API_KEY;
 
